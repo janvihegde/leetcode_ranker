@@ -1,0 +1,18 @@
+{
+  "name": "leetcode-activity-analyzer",
+  "version": "1.0.0",
+  "description": "Analyze LeetCode activity for multiple users over a time range.",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node --watch server/index.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "multer": "^2.4.0",
+    "pdf-parse": "1.1.1"
+  }
+}

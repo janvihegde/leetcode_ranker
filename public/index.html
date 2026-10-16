@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LeetCode Activity Analyzer — Track Progress Across Users</title>
+  <meta name="description" content="Analyze LeetCode activity for multiple users over any time range: problems solved, topics covered, and a combined leaderboard." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="bg-glow"></div>
+  <header class="site-header">
+    <div class="container header-inner">
+      <div class="brand">
+        <span class="logo">⟨/⟩</span>
+        <span>LC<span class="accent">Pulse</span></span>
+      </div>
+      <span class="tagline">LeetCode activity analyzer</span>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="hero">
+      <h1>See who's <span class="gradient-text">grinding</span>, and on what.</h1>
+      <p>Add LeetCode usernames or profile links, pick a time range, and get solved counts, topics and a leaderboard.</p>
+    </section>
+
+    <section class="panel" aria-labelledby="users-heading">
+      <div class="panel-grid">
+        <div>
+          <h2 id="users-heading" class="panel-title"><span class="step">1</span> Users</h2>
+          <form id="add-form" class="input-row" autocomplete="off">
+            <input id="user-input" type="text" placeholder="username or https://leetcode.com/u/username" aria-label="LeetCode username or profile URL" />
+            <button id="add-btn" class="btn btn-secondary" type="submit">Add</button>
+          </form>
+          <label id="dropzone" class="dropzone" for="pdf-input">
+            <input id="pdf-input" type="file" accept="application/pdf,.pdf" hidden />
+            <span class="dz-icon">📄</span>
+            <span class="dz-text"><strong>Upload a PDF</strong> with profile links, or drag it here</span>
+          </label>
+          <div class="chips-header">
+            <span id="user-count" class="muted">No users added</span>
+            <button id="clear-btn" class="link-btn" type="button" hidden>Clear all</button>
+          </div>
+          <ul id="chips" class="chips" aria-live="polite"></ul>
+        </div>
+
+        <div>
+          <h2 class="panel-title"><span class="step">2</span> Time range</h2>
+          <div class="range-grid">
+            <label class="field">
+              <span>Start</span>
+              <input id="start-input" type="datetime-local" />
+            </label>
+            <label class="field">
+              <span>End</span>
+              <input id="end-input" type="datetime-local" />
+            </label>
+          </div>
+          <div class="presets">
+            <button class="preset" data-days="1" type="button">24h</button>
+            <button class="preset active" data-days="7" type="button">7 days</button>
+            <button class="preset" data-days="14" type="button">14 days</button>
+            <button class="preset" data-days="30" type="button">30 days</button>
+          </div>
+          <button id="analyze-btn" class="btn btn-primary btn-lg" type="button" disabled>
+            <span class="btn-label">Analyze</span>
+            <span class="spinner" hidden></span>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <div id="global-alert" class="alert alert-error" role="alert" hidden></div>
+
+    <section id="results" hidden>
+      <div class="section-head">
+        <h2>🏆 Leaderboard</h2>
+        <span id="range-label" class="muted"></span>
+      </div>
+      <div class="panel table-wrap">
+        <table id="leaderboard" class="table">
+          <thead>
+            <tr><th>#</th><th>User</th><th>Solved in range</th><th class="hide-sm">Easy / Med / Hard</th><th class="hide-sm">All-time</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <div class="section-head"><h2>👤 User details</h2></div>
+      <div id="cards" class="cards"></div>
+    </section>
+  </main>
+
+  <footer class="site-footer container">
+    <span>Data from LeetCode's public GraphQL API. Not affiliated with LeetCode.</span>
+  </footer>
+
+  <div id="toast" class="toast" role="status" hidden></div>
+  <script src="app.js"></script>
+</body>
+</html>
