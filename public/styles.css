@@ -257,6 +257,31 @@ input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px
 .split { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .metric-hl { box-shadow: inset 0 -2px 0 var(--primary); }
 
+/* Tabs */
+.tabs { display: inline-flex; gap: 4px; background: var(--bg-2); border: 1px solid var(--border); border-radius: 12px; padding: 4px; }
+.tab {
+  background: none; border: none; color: var(--muted); font: inherit; font-weight: 600; font-size: 0.88rem;
+  padding: 7px 16px; border-radius: 9px; cursor: pointer; transition: all 0.2s;
+}
+.tab:hover { color: var(--text); }
+.tab.active { background: linear-gradient(135deg, var(--primary), var(--primary-2)); color: #1d1105; box-shadow: 0 4px 14px -6px hsla(24, 100%, 55%, 0.7); }
+.tab-pane { animation: fadeUp 0.35s ease both; }
+code { font-family: 'JetBrains Mono', monospace; font-size: 0.85em; background: rgba(0, 0, 0, 0.25); padding: 1px 6px; border-radius: 5px; }
+
+/* GitHub cards */
+.stat-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
+.stat { background: var(--bg-2); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; }
+.stat .label { font-size: 0.72rem; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
+.stat .val { font-size: 1.2rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.add { color: var(--easy); } .del { color: var(--hard); }
+.chart { width: 100%; height: 90px; display: block; }
+.chart rect { transition: opacity 0.2s; }
+.chart rect:hover { opacity: 0.75; }
+.chart-axis { display: flex; justify-content: space-between; color: var(--muted); font-size: 0.72rem; margin-top: 4px; }
+.problems .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.note { color: var(--muted); font-size: 0.78rem; margin-top: 10px; }
+@media (max-width: 560px) { .stat-grid { grid-template-columns: repeat(2, 1fr); } }
+
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes shimmer { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
 @keyframes fadeUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }

@@ -60,4 +60,4 @@ function persistQuestions() {
   }, 1000);
 }
 
-module.exports = { userCache, questionCache, persistQuestions, ensureCacheDir };
+module.exports = { userCache, questionCache, persistQuestions, ensureCacheDir, TTLCache };

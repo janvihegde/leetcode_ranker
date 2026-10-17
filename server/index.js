@@ -1,10 +1,24 @@
 const path = require('path');
+const fs = require('fs');
+
+// Minimal .env loader for local development (production uses real env vars).
+try {
+  const envFile = path.join(__dirname, '..', '.env');
+  if (fs.existsSync(envFile)) {
+    for (const line of fs.readFileSync(envFile, 'utf8').split(/\r?\n/)) {
+      const m = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*?)\s*$/);
+      if (m && !(m[1] in process.env)) process.env[m[1]] = m[2].replace(/^(['"])(.*)\1$/, '$2');
+    }
+  }
+} catch {}
+
 const express = require('express');
 const multer = require('multer');
 // Import the lib directly to avoid pdf-parse's debug-mode test file read.
 const pdfParse = require('pdf-parse/lib/pdf-parse.js');
 const { getUser, getQuestion, LeetCodeError, sleep } = require('./leetcode');
 const { ensureCacheDir } = require('./cache');
+const github = require('./github');
 
 ensureCacheDir();
 
@@ -40,6 +54,27 @@ function extractUsernames(text) {
   return [...found.values()];
 }
 
+const GH_RESERVED = new Set([
+  'orgs', 'topics', 'features', 'settings', 'about', 'pricing', 'marketplace', 'explore', 'login', 'logout',
+  'join', 'signup', 'sponsors', 'notifications', 'issues', 'pulls', 'search', 'trending', 'collections',
+  'events', 'enterprise', 'team', 'teams', 'security', 'site', 'contact', 'apps', 'organizations',
+  'new', 'codespaces', 'customer-stories', 'readme', 'blog', 'docs', 'login', 'password_reset',
+  'dashboard', 'stars', 'watching', 'gist', 'marketplace', 'resources', 'solutions', 'github',
+]);
+const GH_USER_RE = /^[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38}$/;
+
+function extractGithubUsernames(text) {
+  const found = new Map();
+  const re = /github\.com\/([A-Za-z0-9-]{1,39})(?![A-Za-z0-9-])/gi;
+  let m;
+  while ((m = re.exec(text))) {
+    const n = m[1];
+    if (GH_RESERVED.has(n.toLowerCase()) || !GH_USER_RE.test(n)) continue;
+    if (!found.has(n.toLowerCase())) found.set(n.toLowerCase(), n);
+  }
+  return [...found.values()];
+}
+
 app.get('/health', (req, res) => res.json({ status: 'ok', uptime: process.uptime() }));
 
 app.post('/api/parse-pdf', upload.single('file'), async (req, res) => {
@@ -51,7 +86,7 @@ app.post('/api/parse-pdf', upload.single('file'), async (req, res) => {
     const data = await pdfParse(req.file.buffer);
     // PDF text may break URLs across lines; also join hyphen/linebreak splits.
     const text = data.text + '\n' + data.text.replace(/\s*\n\s*/g, '');
-    const usernames = extractUsernames(text);
+    const usernames = req.query.type === 'github' ? extractGithubUsernames(text) : extractUsernames(text);
     res.json({ usernames, count: usernames.length });
   } catch (e) {
     res.status(422).json({ error: 'Could not read PDF: ' + e.message });
@@ -163,6 +198,47 @@ app.post('/api/analyze', async (req, res) => {
     range: { start: startSec, end: endSec },
     results,
     globalError: blocked ? { code: blocked.code, message: blocked.message } : null,
+  });
+});
+
+// ---------- GitHub ----------
+app.get('/api/github/status', (req, res) => res.json({ tokenConfigured: github.hasToken() }));
+
+app.post('/api/github/analyze', async (req, res) => {
+  const { usernames, start, end, repo } = req.body || {};
+  if (!github.hasToken()) {
+    return res.status(503).json({
+      error: 'GITHUB_TOKEN is not configured on the server. Set it as an environment variable (see README) and restart.',
+      code: 'NO_TOKEN',
+    });
+  }
+  if (!Array.isArray(usernames) || usernames.length === 0)
+    return res.status(400).json({ error: 'Provide a non-empty "usernames" array.' });
+  if (usernames.length > 30) return res.status(400).json({ error: 'Max 30 GitHub users per request.' });
+  const from = new Date(start), to = new Date(end);
+  if (isNaN(from) || isNaN(to) || from >= to) return res.status(400).json({ error: 'Invalid time range.' });
+  const repoName = github.parseRepo(repo);
+  if (repo && repo.trim() && !repoName) return res.status(400).json({ error: 'Repo must be "owner/repo" or a GitHub URL.' });
+
+  const results = [];
+  let fatal = null;
+  for (const raw of usernames) {
+    const name = String(raw).trim();
+    if (fatal) { results.push({ username: name, error: fatal.message, errorCode: fatal.code }); continue; }
+    if (!GH_USER_RE.test(name)) { results.push({ username: name, error: 'Invalid username format.', errorCode: 'INVALID' }); continue; }
+    try {
+      results.push(await github.analyzeUser(name, from, to, repoName));
+    } catch (e) {
+      const code = e.code || 'UPSTREAM';
+      if (['RATE_LIMITED', 'TOKEN_INVALID', 'NO_TOKEN'].includes(code)) fatal = e;
+      results.push({ username: name, error: e.message, errorCode: code });
+    }
+  }
+  res.json({
+    range: { start: from.toISOString(), end: to.toISOString() },
+    repo: repoName,
+    results,
+    globalError: fatal ? { code: fatal.code, message: fatal.message } : null,
   });
 });
 

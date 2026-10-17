@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>LeetCode Activity Analyzer — Track Progress Across Users</title>
-  <meta name="description" content="Analyze LeetCode activity for multiple users over any time range: problems solved, topics covered, and a combined leaderboard." />
+  <title>LCPulse — LeetCode &amp; GitHub Activity Analyzer</title>
+  <meta name="description" content="Analyze LeetCode and GitHub activity for multiple users over any time range: problems solved, topics, commits, lines of code and combined leaderboards." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="styles.css" />
@@ -17,101 +17,193 @@
         <span class="logo">⟨/⟩</span>
         <span>LC<span class="accent">Pulse</span></span>
       </div>
-      <span class="tagline">LeetCode activity analyzer</span>
+      <nav class="tabs" role="tablist" aria-label="Data source">
+        <button id="tab-btn-leetcode" class="tab active" role="tab" aria-selected="true" aria-controls="tab-leetcode" data-tab="leetcode">LeetCode</button>
+        <button id="tab-btn-github" class="tab" role="tab" aria-selected="false" aria-controls="tab-github" data-tab="github">GitHub</button>
+      </nav>
     </div>
   </header>
 
   <main class="container">
-    <section class="hero">
-      <h1>See who's <span class="gradient-text">grinding</span>, and on what.</h1>
-      <p>Add LeetCode usernames or profile links, pick a time range, and get solved counts, topics and a leaderboard.</p>
-    </section>
+    <!-- ================= LeetCode ================= -->
+    <div id="tab-leetcode" class="tab-pane" role="tabpanel" aria-labelledby="tab-btn-leetcode">
+      <section class="hero">
+        <h1>See who's <span class="gradient-text">grinding</span>, and on what.</h1>
+        <p>Add LeetCode usernames or profile links, pick a time range, and get solved counts, topics and a leaderboard.</p>
+      </section>
 
-    <section class="panel" aria-labelledby="users-heading">
-      <div class="panel-grid">
-        <div>
-          <h2 id="users-heading" class="panel-title"><span class="step">1</span> Users</h2>
-          <form id="add-form" class="input-row" autocomplete="off">
-            <input id="user-input" type="text" placeholder="username or https://leetcode.com/u/username" aria-label="LeetCode username or profile URL" />
-            <button id="add-btn" class="btn btn-secondary" type="submit">Add</button>
-          </form>
-          <label id="dropzone" class="dropzone" for="pdf-input">
-            <input id="pdf-input" type="file" accept="application/pdf,.pdf" hidden />
-            <span class="dz-icon">📄</span>
-            <span class="dz-text"><strong>Upload a PDF</strong> with profile links, or drag it here</span>
-          </label>
-          <div class="chips-header">
-            <span id="user-count" class="muted">No users added</span>
-            <button id="clear-btn" class="link-btn" type="button" hidden>Clear all</button>
-          </div>
-          <ul id="chips" class="chips" aria-live="polite"></ul>
-        </div>
-
-        <div>
-          <h2 class="panel-title"><span class="step">2</span> Time range</h2>
-          <div class="range-grid">
-            <label class="field">
-              <span>Start</span>
-              <input id="start-input" type="datetime-local" />
-            </label>
-            <label class="field">
-              <span>End</span>
-              <input id="end-input" type="datetime-local" />
-            </label>
-          </div>
-          <div class="presets">
-            <button class="preset" data-days="1" type="button">24h</button>
-            <button class="preset active" data-days="7" type="button">7 days</button>
-            <button class="preset" data-days="14" type="button">14 days</button>
-            <button class="preset" data-days="30" type="button">30 days</button>
-          </div>
-          <button id="analyze-btn" class="btn btn-primary btn-lg" type="button" disabled>
-            <span class="btn-label">Analyze</span>
-            <span class="spinner" hidden></span>
-          </button>
-        </div>
-      </div>
-    </section>
-
-    <div id="global-alert" class="alert alert-error" role="alert" hidden></div>
-
-    <section id="results" hidden>
-      <div class="panel leaderboard-panel">
-        <div class="lb-head">
+      <section class="panel" aria-labelledby="users-heading">
+        <div class="panel-grid">
           <div>
-            <h2 class="lb-title">🏆 Leaderboard</h2>
-            <div id="range-label" class="lb-range"></div>
-          </div>
-          <div class="lb-actions">
-            <div class="segmented" role="radiogroup" aria-label="Rank by">
-              <button type="button" class="seg active" data-sort="total" id="sort-total">Total solved</button>
-              <button type="button" class="seg" data-sort="hard" id="sort-hard">Hard</button>
-              <button type="button" class="seg" data-sort="topics" id="sort-topics">Topics</button>
+            <h2 id="users-heading" class="panel-title"><span class="step">1</span> Users</h2>
+            <form id="add-form" class="input-row" autocomplete="off">
+              <input id="user-input" type="text" placeholder="username or https://leetcode.com/u/username" aria-label="LeetCode username or profile URL" />
+              <button id="add-btn" class="btn btn-secondary" type="submit">Add</button>
+            </form>
+            <label id="dropzone" class="dropzone" for="pdf-input">
+              <input id="pdf-input" type="file" accept="application/pdf,.pdf" hidden />
+              <span class="dz-icon">📄</span>
+              <span class="dz-text"><strong>Upload a PDF</strong> with profile links, or drag it here</span>
+            </label>
+            <div class="chips-header">
+              <span id="user-count" class="muted">No users added</span>
+              <button id="clear-btn" class="link-btn" type="button" hidden>Clear all</button>
             </div>
-            <button id="csv-btn" type="button" class="btn btn-secondary btn-sm">⬇ CSV</button>
-            <button id="img-btn" type="button" class="btn btn-secondary btn-sm">🖼 Image</button>
+            <ul id="chips" class="chips" aria-live="polite"></ul>
+          </div>
+
+          <div>
+            <h2 class="panel-title"><span class="step">2</span> Time range</h2>
+            <div class="range-grid">
+              <label class="field"><span>Start</span><input id="start-input" type="datetime-local" /></label>
+              <label class="field"><span>End</span><input id="end-input" type="datetime-local" /></label>
+            </div>
+            <div class="presets">
+              <button class="preset" data-days="1" type="button">24h</button>
+              <button class="preset active" data-days="7" type="button">7 days</button>
+              <button class="preset" data-days="14" type="button">14 days</button>
+              <button class="preset" data-days="30" type="button">30 days</button>
+            </div>
+            <button id="analyze-btn" class="btn btn-primary btn-lg" type="button" disabled>
+              <span class="btn-label">Analyze</span>
+              <span class="spinner" hidden></span>
+            </button>
           </div>
         </div>
-        <div class="table-wrap">
-          <table id="leaderboard" class="table lb-table">
-            <thead>
-              <tr><th>Rank</th><th>Username</th><th>Solved in range</th><th>Easy / Med / Hard</th><th class="hide-sm">Top topic</th></tr>
-            </thead>
-            <tbody></tbody>
-          </table>
+      </section>
+
+      <div id="global-alert" class="alert alert-error" role="alert" hidden></div>
+
+      <section id="results" hidden>
+        <div class="panel leaderboard-panel">
+          <div class="lb-head">
+            <div>
+              <h2 class="lb-title">🏆 Leaderboard</h2>
+              <div id="range-label" class="lb-range"></div>
+            </div>
+            <div class="lb-actions">
+              <div class="segmented" role="radiogroup" aria-label="Rank by">
+                <button type="button" class="seg active" data-sort="total" id="sort-total">Total solved</button>
+                <button type="button" class="seg" data-sort="hard" id="sort-hard">Hard</button>
+                <button type="button" class="seg" data-sort="topics" id="sort-topics">Topics</button>
+              </div>
+              <button id="csv-btn" type="button" class="btn btn-secondary btn-sm">⬇ CSV</button>
+              <button id="img-btn" type="button" class="btn btn-secondary btn-sm">🖼 Image</button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table id="leaderboard" class="table lb-table">
+              <thead>
+                <tr><th>Rank</th><th>Username</th><th>Solved in range</th><th>Easy / Med / Hard</th><th class="hide-sm">Top topic</th></tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
         </div>
+
+        <div class="section-head"><h2>👤 User details</h2></div>
+        <div id="cards" class="cards"></div>
+      </section>
+    </div>
+
+    <!-- ================= GitHub ================= -->
+    <div id="tab-github" class="tab-pane" role="tabpanel" aria-labelledby="tab-btn-github" hidden>
+      <section class="hero">
+        <h1>Who's <span class="gradient-text">shipping</span> the most code?</h1>
+        <p>Add GitHub usernames or profile links, pick a time range, and compare commits, lines of code and pull requests.</p>
+      </section>
+
+      <div id="gh-token-alert" class="alert alert-error" role="alert" hidden>
+        <span>🔑</span>
+        <span><b>GitHub token missing.</b> The server has no <code>GITHUB_TOKEN</code> environment variable, so GitHub analysis is disabled. Create a token at
+          <a href="https://github.com/settings/tokens" target="_blank" rel="noopener">github.com/settings/tokens</a> (classic, <code>read:user</code> scope is enough), set <code>GITHUB_TOKEN</code>, then restart the server.</span>
       </div>
 
-      <div class="section-head"><h2>👤 User details</h2></div>
-      <div id="cards" class="cards"></div>
-    </section>
+      <section class="panel" aria-labelledby="gh-users-heading">
+        <div class="panel-grid">
+          <div>
+            <h2 id="gh-users-heading" class="panel-title"><span class="step">1</span> Users</h2>
+            <form id="gh-add-form" class="input-row" autocomplete="off">
+              <input id="gh-user-input" type="text" placeholder="username or https://github.com/username" aria-label="GitHub username or profile URL" />
+              <button id="gh-add-btn" class="btn btn-secondary" type="submit">Add</button>
+            </form>
+            <label id="gh-dropzone" class="dropzone" for="gh-pdf-input">
+              <input id="gh-pdf-input" type="file" accept="application/pdf,.pdf" hidden />
+              <span class="dz-icon">📄</span>
+              <span class="dz-text"><strong>Upload a PDF</strong> with GitHub links, or drag it here</span>
+            </label>
+            <div class="chips-header">
+              <span id="gh-user-count" class="muted">No users added</span>
+              <button id="gh-clear-btn" class="link-btn" type="button" hidden>Clear all</button>
+            </div>
+            <ul id="gh-chips" class="chips" aria-live="polite"></ul>
+          </div>
+
+          <div>
+            <h2 class="panel-title"><span class="step">2</span> Time range</h2>
+            <div class="range-grid">
+              <label class="field"><span>Start</span><input id="gh-start-input" type="datetime-local" /></label>
+              <label class="field"><span>End</span><input id="gh-end-input" type="datetime-local" /></label>
+            </div>
+            <div class="presets">
+              <button class="preset" data-days="1" type="button">24h</button>
+              <button class="preset active" data-days="7" type="button">7 days</button>
+              <button class="preset" data-days="14" type="button">14 days</button>
+              <button class="preset" data-days="30" type="button">30 days</button>
+            </div>
+            <label class="field" style="margin-top:14px">
+              <span>Specific repo <span class="muted">(optional)</span></span>
+              <input id="gh-repo-input" type="text" placeholder="owner/repo or https://github.com/owner/repo" />
+            </label>
+            <button id="gh-analyze-btn" class="btn btn-primary btn-lg" type="button" disabled>
+              <span class="btn-label">Analyze</span>
+              <span class="spinner" hidden></span>
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <div id="gh-global-alert" class="alert alert-error" role="alert" hidden></div>
+
+      <section id="gh-results" hidden>
+        <div class="panel leaderboard-panel">
+          <div class="lb-head">
+            <div>
+              <h2 class="lb-title">🏆 Leaderboard</h2>
+              <div id="gh-range-label" class="lb-range"></div>
+            </div>
+            <div class="lb-actions">
+              <div class="segmented" role="radiogroup" aria-label="Rank by">
+                <button type="button" class="seg active" data-sort="commits" id="gh-sort-commits">Commits</button>
+                <button type="button" class="seg" data-sort="additions" id="gh-sort-additions">Lines added</button>
+                <button type="button" class="seg" data-sort="prs" id="gh-sort-prs">PRs</button>
+              </div>
+              <button id="gh-csv-btn" type="button" class="btn btn-secondary btn-sm">⬇ CSV</button>
+              <button id="gh-img-btn" type="button" class="btn btn-secondary btn-sm">🖼 Image</button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table id="gh-leaderboard" class="table lb-table">
+              <thead>
+                <tr><th>Rank</th><th>Username</th><th>Commits</th><th>+Lines</th><th>−Lines</th><th class="hide-sm">PRs</th><th class="hide-sm">Top repo</th></tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="section-head"><h2>👤 User details</h2></div>
+        <div id="gh-cards" class="cards"></div>
+      </section>
+    </div>
   </main>
 
   <footer class="site-footer container">
-    <span>Data from LeetCode's public GraphQL API. Not affiliated with LeetCode.</span>
+    <span>Data from LeetCode's public GraphQL API and the GitHub GraphQL API. Not affiliated with either.</span>
   </footer>
 
   <div id="toast" class="toast" role="status" hidden></div>
   <script src="app.js"></script>
+  <script src="github.js"></script>
 </body>
 </html>

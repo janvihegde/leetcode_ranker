@@ -1,11 +1,14 @@
-# LCPulse: LeetCode Activity Analyzer
+# LCPulse: LeetCode & GitHub Activity Analyzer
 
-Analyze LeetCode activity for multiple users over a custom time range: problems solved, topics covered, all-time difficulty totals, and a combined leaderboard.
+Analyze activity for multiple users over a custom time range, in two tabs:
 
-- **Backend:** Node.js + Express. It proxies LeetCode GraphQL and parses PDFs with `pdf-parse`.
+- **LeetCode:** problems solved, topics covered, all-time difficulty totals, and a leaderboard.
+- **GitHub:** commits, lines added/removed, PRs, per-repo breakdown, commits-per-day chart, and a leaderboard.
+
+- **Backend:** Node.js + Express. It proxies the LeetCode GraphQL API and the GitHub GraphQL API, and parses PDFs with `pdf-parse`.
 - **Frontend:** Vanilla HTML/CSS/JS with no build step, served from `public/`.
 
-## Features
+## LeetCode tab
 - Add users by username or profile URL (`leetcode.com/u/name` or `leetcode.com/name`). You can paste several, separated by commas or spaces.
 - Upload a PDF. The server extracts profile links with a regex, skips reserved paths (`/problems`, `/contest`, …), and removes duplicates.
 - Pick a start/end date-time (default: last 7 days) or use the presets.
@@ -18,6 +21,32 @@ Analyze LeetCode activity for multiple users over a custom time range: problems 
 - Caching: user data is cached for 5 minutes in memory. Question metadata is cached for 24 hours and also written to `cache/questions.json`.
 - Throttling: requests to LeetCode are sent one at a time, at least 350 ms apart, with exponential-backoff retries on 429/5xx.
 - Clear errors for invalid/private users, rate limits, and **403 / Cloudflare blocks**.
+
+## GitHub tab
+- Add users by username or `github.com/<name>` URL, or upload a PDF. Reserved paths (`/orgs`, `/topics`, `/features`, `/settings`, …) are skipped, and duplicates are removed.
+- Uses the same time range and presets as the LeetCode tab. There is also an optional **specific repo** field (`owner/repo` or a URL).
+- Each user gets a card with:
+  - Commits, lines added/removed, net lines, PRs opened
+  - A per-repo table
+  - A commits-per-day chart (weekly bars for ranges over about 2 months)
+- Leaderboard ranked by commits, with toggles for lines added and PRs. Ties share a rank. It also has CSV and PNG export.
+- How the data is fetched:
+  - `contributionsCollection(from, to)` gives commits, PRs, issues, and commits per repo/day. Ranges longer than one year are split into 1-year chunks.
+  - Lines of code come from `defaultBranchRef.target.history(author, since, until)` for the user's **top 5 repos by commits**, or only the specified repo if you gave one. Additions and deletions are summed, capped at 500 commits per repo.
+- Results are cached for 5 minutes.
+- Unknown users get an error card. A missing or invalid token and rate limits are shown as banners.
+
+### GitHub token
+The GitHub tab needs a personal access token on the **server**. It is never sent to the browser.
+
+1. Create a token at <https://github.com/settings/tokens>:
+   - Classic: `read:user` is enough for public data. Add `repo` to include private repos you can access.
+   - Fine-grained: read-only public access.
+2. Make it available to the server in one of these ways:
+   - Locally: create a `.env` file (gitignored) with `GITHUB_TOKEN=ghp_xxx`, or run `$env:GITHUB_TOKEN="ghp_xxx"; npm start` in PowerShell.
+   - On Render: set `GITHUB_TOKEN` in the service's **Environment** tab.
+
+If the token is missing, the GitHub tab shows a banner explaining how to set it, and the Analyze button is disabled.
 
 ## Run locally
 Requires **Node.js 18+**.
@@ -34,8 +63,10 @@ Use `npm run dev` to auto-restart on file changes. Set `PORT` to change the port
 | Method | Path | Body | Description |
 |---|---|---|---|
 | GET | `/health` | n/a | Health check |
-| POST | `/api/parse-pdf` | multipart `file` | Returns `{ usernames, count }` |
+| POST | `/api/parse-pdf` | multipart `file` | Returns `{ usernames, count }`. Add `?type=github` to extract GitHub usernames |
 | POST | `/api/analyze` | `{ usernames: [], start, end }` (ISO strings) | Per-user analysis plus `globalError` if LeetCode blocked or rate-limited the request |
+| GET | `/api/github/status` | n/a | `{ tokenConfigured }` |
+| POST | `/api/github/analyze` | `{ usernames: [], start, end, repo? }` | Per-user GitHub stats plus `globalError` |
 
 ## How counting works
 - LeetCode's public API only returns the **20 most recent accepted submissions**. These are filtered to your range, and unique `titleSlug`s are counted.
@@ -45,17 +76,17 @@ Use `npm run dev` to auto-restart on file changes. Set `PORT` to change the port
 - The leaderboard ranks by the larger of the unique count and the calendar count.
 
 ## Deploy (Render)
-1. Push this repo to GitHub:
+1. Push this repo to GitHub (already set up as `origin` → `janvihegde/leetcode_ranker`):
    ```bash
-   git remote add origin https://github.com/<you>/leetcode-activity-analyzer.git
-   git push -u origin main
+   git push
    ```
 2. In [Render](https://dashboard.render.com), choose **New → Blueprint** and select the repo. Render reads `render.yaml`:
    - Web service, free plan
    - Build: `npm install`
    - Start: `npm start`
    - Health check: `/health`
-3. Wait for the deploy, then open the `*.onrender.com` URL.
+3. When asked, enter a value for **`GITHUB_TOKEN`**. It is declared with `sync: false`, so the value lives only in Render, not in git.
+4. Wait for the deploy, then open the `*.onrender.com` URL. Every push to `main` redeploys automatically.
 
 You can also set it up by hand: **New → Web Service**, with runtime Node, build `npm install`, and start `npm start`.
 
@@ -68,10 +99,13 @@ Notes:
 ## Project structure
 ```
 server/
-  index.js      Express app, routes, analysis logic
-  leetcode.js   GraphQL client (queue, retries, block detection)
+  index.js      Express app, routes, LeetCode analysis, .env loader
+  leetcode.js   LeetCode GraphQL client (queue, retries, block detection)
+  github.js     GitHub GraphQL client (contributions, line stats, caching)
   cache.js      TTL caches + on-disk question cache
 public/
-  index.html, styles.css, app.js
+  index.html, styles.css
+  app.js        LeetCode tab + tab switching
+  github.js     GitHub tab
 render.yaml
 ```

@@ -106,15 +106,16 @@
     const p = (n) => String(n).padStart(2, '0');
     return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
   };
+  const presets = () => document.querySelectorAll('#tab-leetcode .preset');
   function setPreset(days) {
     const end = new Date();
     const start = new Date(end.getTime() - days * 86400000);
     els.start.value = toLocalInput(start);
     els.end.value = toLocalInput(end);
-    document.querySelectorAll('.preset').forEach((b) => b.classList.toggle('active', Number(b.dataset.days) === days));
+    presets().forEach((b) => b.classList.toggle('active', Number(b.dataset.days) === days));
   }
-  document.querySelectorAll('.preset').forEach((b) => b.addEventListener('click', () => setPreset(Number(b.dataset.days))));
-  [els.start, els.end].forEach((i) => i.addEventListener('input', () => document.querySelectorAll('.preset').forEach((b) => b.classList.remove('active'))));
+  presets().forEach((b) => b.addEventListener('click', () => setPreset(Number(b.dataset.days))));
+  [els.start, els.end].forEach((i) => i.addEventListener('input', () => presets().forEach((b) => b.classList.remove('active'))));
   setPreset(7);
 
   // Analyze
@@ -211,9 +212,9 @@
         <tr><td><span class="rank-badge">—</span></td><td>${esc(u.username)}</td><td colspan="3" class="err-text">${esc(u.error)}</td></tr>`).join('');
   }
 
-  document.querySelectorAll('.seg').forEach((b) => b.addEventListener('click', () => {
+  document.querySelectorAll('#tab-leetcode .seg').forEach((b) => b.addEventListener('click', () => {
     state.sort = b.dataset.sort;
-    document.querySelectorAll('.seg').forEach((x) => x.classList.toggle('active', x === b));
+    document.querySelectorAll('#tab-leetcode .seg').forEach((x) => x.classList.toggle('active', x === b));
     renderLeaderboard();
   }));
 
@@ -378,6 +379,18 @@
           <div><h3>${esc(u.username)}</h3><div class="sub err-text">${esc(u.error)}</div></div></div>
       </article>`;
   }
+
+  // Tabs (shared by both panes)
+  document.querySelectorAll('.tab').forEach((t) => t.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach((x) => {
+      const on = x === t;
+      x.classList.toggle('active', on);
+      x.setAttribute('aria-selected', on);
+      document.getElementById('tab-' + x.dataset.tab).hidden = !on;
+    });
+    history.replaceState(null, '', '#' + t.dataset.tab);
+  }));
+  if (location.hash === '#github') document.getElementById('tab-btn-github').click();
 
   renderChips();
 })();
