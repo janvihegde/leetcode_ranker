@@ -76,17 +76,30 @@
     <div id="global-alert" class="alert alert-error" role="alert" hidden></div>
 
     <section id="results" hidden>
-      <div class="section-head">
-        <h2>🏆 Leaderboard</h2>
-        <span id="range-label" class="muted"></span>
-      </div>
-      <div class="panel table-wrap">
-        <table id="leaderboard" class="table">
-          <thead>
-            <tr><th>#</th><th>User</th><th>Solved in range</th><th class="hide-sm">Easy / Med / Hard</th><th class="hide-sm">All-time</th></tr>
-          </thead>
-          <tbody></tbody>
-        </table>
+      <div class="panel leaderboard-panel">
+        <div class="lb-head">
+          <div>
+            <h2 class="lb-title">🏆 Leaderboard</h2>
+            <div id="range-label" class="lb-range"></div>
+          </div>
+          <div class="lb-actions">
+            <div class="segmented" role="radiogroup" aria-label="Rank by">
+              <button type="button" class="seg active" data-sort="total" id="sort-total">Total solved</button>
+              <button type="button" class="seg" data-sort="hard" id="sort-hard">Hard</button>
+              <button type="button" class="seg" data-sort="topics" id="sort-topics">Topics</button>
+            </div>
+            <button id="csv-btn" type="button" class="btn btn-secondary btn-sm">⬇ CSV</button>
+            <button id="img-btn" type="button" class="btn btn-secondary btn-sm">🖼 Image</button>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table id="leaderboard" class="table lb-table">
+            <thead>
+              <tr><th>Rank</th><th>Username</th><th>Solved in range</th><th>Easy / Med / Hard</th><th class="hide-sm">Top topic</th></tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
       </div>
 
       <div class="section-head"><h2>👤 User details</h2></div>

@@ -1,6 +1,6 @@
 (() => {
   const $ = (s) => document.querySelector(s);
-  const state = { users: [] };
+  const state = { users: [], results: null, sort: 'total', rangeText: '' };
 
   const els = {
     form: $('#add-form'), input: $('#user-input'), chips: $('#chips'), count: $('#user-count'),
@@ -149,7 +149,8 @@
     showAlert('');
     setLoading(true);
     showSkeleton();
-    els.rangeLabel.textContent = fmtRange(start, end);
+    state.rangeText = fmtRange(start, end);
+    els.rangeLabel.textContent = state.rangeText;
     try {
       const r = await fetch('/api/analyze', {
         method: 'POST',
@@ -171,22 +172,158 @@
 
   const effectiveCount = (u) => (u.incomplete ? Math.max(u.solvedInRange, u.calendarCount) : u.solvedInRange);
 
-  function render(results) {
-    const ok = results.filter((u) => !u.error).sort((a, b) => effectiveCount(b) - effectiveCount(a) || (b.totals.all || 0) - (a.totals.all || 0));
-    const bad = results.filter((u) => u.error);
+  // Ranking metrics. Ties share a rank (1,1,3…); inside a tie we sort by hard solved.
+  const METRICS = {
+    total: { label: 'Total solved', val: effectiveCount, tie: (u) => u.difficultyCounts.Hard },
+    hard: { label: 'Hard solved', val: (u) => u.difficultyCounts.Hard, tie: effectiveCount },
+    topics: { label: 'Topics covered', val: (u) => u.topics.length, tie: (u) => u.difficultyCounts.Hard },
+  };
 
+  function rankedRows() {
+    if (!state.results) return [];
+    const m = METRICS[state.sort];
+    const ok = state.results.filter((u) => !u.error).sort((a, b) =>
+      m.val(b) - m.val(a) || m.tie(b) - m.tie(a) || effectiveCount(b) - effectiveCount(a) || a.username.localeCompare(b.username));
+    let prev = null, rank = 0;
+    return ok.map((u, i) => {
+      const v = m.val(u);
+      if (v !== prev) { rank = i + 1; prev = v; }
+      return { u, rank, tied: false, value: v, topTopic: u.topics[0]?.name || '' };
+    }).map((r, _, arr) => ({ ...r, tied: arr.filter((x) => x.rank === r.rank).length > 1 }));
+  }
+
+  function renderLeaderboard() {
+    const rows = rankedRows();
+    const bad = (state.results || []).filter((u) => u.error);
+    const col = { total: 2, hard: 3, topics: 4 }[state.sort];
     els.board.innerHTML =
-      ok.map((u, i) => `
-        <tr>
-          <td class="rank rank-${i + 1}">${i < 3 ? ['🥇', '🥈', '🥉'][i] : i + 1}</td>
+      rows.map(({ u, rank, tied, topTopic }) => `
+        <tr class="${rank <= 3 ? 'podium-' + rank : ''}">
+          <td><span class="rank-badge" title="${tied ? 'Tied' : ''}">${tied ? 'T' : ''}${rank}</span></td>
           <td><div class="user-cell">${avatar(u)}<a href="https://leetcode.com/u/${encodeURIComponent(u.username)}/" target="_blank" rel="noopener">${esc(u.username)}</a></div></td>
-          <td><span class="big-num">${u.solvedInRange}</span> unique
+          <td class="${col === 2 ? 'metric-hl' : ''}"><span class="big-num">${u.solvedInRange}</span>
             ${u.incomplete ? `<span class="approx">≈ ${u.calendarCount} submissions (calendar)</span>` : ''}</td>
-          <td class="hide-sm"><span class="easy">${u.difficultyCounts.Easy}</span> / <span class="medium">${u.difficultyCounts.Medium}</span> / <span class="hard">${u.difficultyCounts.Hard}</span></td>
-          <td class="hide-sm">${u.totals.all ?? 0}</td>
+          <td class="split ${col === 3 ? 'metric-hl' : ''}"><span class="easy">${u.difficultyCounts.Easy}</span> / <span class="medium">${u.difficultyCounts.Medium}</span> / <span class="hard"><b>${u.difficultyCounts.Hard}</b></span></td>
+          <td class="hide-sm ${col === 4 ? 'metric-hl' : ''}">${topTopic ? `<span class="tag">${esc(topTopic)}</span>` : '<span class="muted">—</span>'}
+            ${state.sort === 'topics' ? `<span class="muted"> · ${u.topics.length} topics</span>` : ''}</td>
         </tr>`).join('') +
       bad.map((u) => `
-        <tr><td class="rank">—</td><td>${esc(u.username)}</td><td colspan="3" class="err-text">${esc(u.error)}</td></tr>`).join('');
+        <tr><td><span class="rank-badge">—</span></td><td>${esc(u.username)}</td><td colspan="3" class="err-text">${esc(u.error)}</td></tr>`).join('');
+  }
+
+  document.querySelectorAll('.seg').forEach((b) => b.addEventListener('click', () => {
+    state.sort = b.dataset.sort;
+    document.querySelectorAll('.seg').forEach((x) => x.classList.toggle('active', x === b));
+    renderLeaderboard();
+  }));
+
+  // CSV export
+  $('#csv-btn').addEventListener('click', () => {
+    const rows = rankedRows();
+    if (!rows.length) return toast('Nothing to export yet');
+    const q = (v) => `"${String(v).replace(/"/g, '""')}"`;
+    const lines = [
+      ['Rank', 'Username', 'Solved in range', 'Calendar submissions (if incomplete)', 'Easy', 'Medium', 'Hard', 'Topics covered', 'Top topic'],
+      ...rows.map(({ u, rank, tied, topTopic }) => [
+        (tied ? 'T' : '') + rank, u.username, u.solvedInRange, u.incomplete ? u.calendarCount : '',
+        u.difficultyCounts.Easy, u.difficultyCounts.Medium, u.difficultyCounts.Hard, u.topics.length, topTopic]),
+    ];
+    const csv = `# Leaderboard (${METRICS[state.sort].label}) — ${state.rangeText}\n` + lines.map((l) => l.map(q).join(',')).join('\n');
+    download(new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' }), `leetcode-leaderboard-${stamp()}.csv`);
+  });
+
+  // Image export (drawn on canvas: no external deps, no CORS-tainting avatars)
+  $('#img-btn').addEventListener('click', async () => {
+    const rows = rankedRows();
+    if (!rows.length) return toast('Nothing to export yet');
+    await document.fonts?.ready;
+    const W = 960, rowH = 56, headH = 150, pad = 36;
+    const H = headH + 44 + rows.length * rowH + 60;
+    const dpr = 2;
+    const c = document.createElement('canvas');
+    c.width = W * dpr; c.height = H * dpr;
+    const x = c.getContext('2d');
+    x.scale(dpr, dpr);
+    const F = (w, s) => `${w} ${s}px Inter, system-ui, sans-serif`;
+
+    const bg = x.createLinearGradient(0, 0, W, H);
+    bg.addColorStop(0, '#11131c'); bg.addColorStop(1, '#1a1530');
+    x.fillStyle = bg; x.fillRect(0, 0, W, H);
+    const glow = x.createRadialGradient(120, 0, 0, 120, 0, 420);
+    glow.addColorStop(0, 'rgba(255,170,40,0.22)'); glow.addColorStop(1, 'rgba(255,170,40,0)');
+    x.fillStyle = glow; x.fillRect(0, 0, W, H);
+
+    x.fillStyle = '#f2f3f8'; x.font = F(800, 34); x.fillText('🏆 LeetCode Leaderboard', pad, 66);
+    x.fillStyle = '#9aa0b4'; x.font = F(500, 15);
+    x.fillText(state.rangeText, pad, 96);
+    x.fillText(`Ranked by ${METRICS[state.sort].label.toLowerCase()}`, pad, 120);
+
+    const cols = [pad, pad + 80, pad + 380, pad + 540, pad + 700];
+    x.fillStyle = '#7d8399'; x.font = F(600, 12);
+    ['RANK', 'USERNAME', 'SOLVED', 'EASY / MED / HARD', 'TOP TOPIC'].forEach((t, i) => x.fillText(t, cols[i], headH + 20));
+
+    const medal = { 1: ['#ffe27a', '#e6a817'], 2: ['#f1f4f8', '#a9b2c0'], 3: ['#f0b27a', '#b8682e'] };
+    rows.forEach(({ u, rank, tied, topTopic }, i) => {
+      const y = headH + 44 + i * rowH;
+      if (medal[rank]) {
+        const g = x.createLinearGradient(pad - 12, 0, W - pad, 0);
+        g.addColorStop(0, medal[rank][1] + '40'); g.addColorStop(0.7, 'rgba(0,0,0,0)');
+        x.fillStyle = g; roundRect(x, pad - 12, y, W - 2 * pad + 24, rowH - 8, 12); x.fill();
+      } else if (i % 2) {
+        x.fillStyle = 'rgba(255,255,255,0.03)'; roundRect(x, pad - 12, y, W - 2 * pad + 24, rowH - 8, 12); x.fill();
+      }
+      const cy = y + (rowH - 8) / 2;
+      // rank circle
+      x.beginPath(); x.arc(cols[0] + 16, cy, 17, 0, Math.PI * 2);
+      if (medal[rank]) {
+        const g = x.createLinearGradient(cols[0], cy - 17, cols[0] + 32, cy + 17);
+        g.addColorStop(0, medal[rank][0]); g.addColorStop(1, medal[rank][1]); x.fillStyle = g;
+      } else x.fillStyle = '#23263a';
+      x.fill();
+      x.fillStyle = medal[rank] ? '#2a1d00' : '#e6e8f0'; x.font = F(800, 14); x.textAlign = 'center';
+      x.fillText((tied ? 'T' : '') + rank, cols[0] + 16, cy + 5); x.textAlign = 'left';
+
+      x.fillStyle = rank === 1 ? '#ffd45c' : '#f2f3f8'; x.font = F(700, 17);
+      x.fillText(clip(x, u.username, 280), cols[1], cy + 6);
+      x.fillStyle = '#ffb547'; x.font = F(800, 20);
+      x.fillText(String(u.solvedInRange) + (u.incomplete ? '*' : ''), cols[2], cy + 7);
+      x.font = F(700, 16);
+      let cx = cols[3];
+      [[u.difficultyCounts.Easy, '#2fd4a7'], [' / ', '#6b7088'], [u.difficultyCounts.Medium, '#fbbf24'], [' / ', '#6b7088'], [u.difficultyCounts.Hard, '#f4566e']]
+        .forEach(([t, color]) => { x.fillStyle = color; x.fillText(String(t), cx, cy + 6); cx += x.measureText(String(t)).width; });
+      x.fillStyle = '#c9b5ff'; x.font = F(500, 14);
+      x.fillText(clip(x, topTopic || '—', W - pad - cols[4]), cols[4], cy + 5);
+    });
+
+    x.fillStyle = '#6b7088'; x.font = F(500, 12);
+    const foot = rows.some((r) => r.u.incomplete) ? '* list may be incomplete (beyond 20 most recent submissions)  ·  ' : '';
+    x.fillText(foot + 'Generated with LCPulse', pad, H - 24);
+
+    c.toBlob((b) => download(b, `leetcode-leaderboard-${stamp()}.png`), 'image/png');
+  });
+
+  function roundRect(x, X, Y, w, h, r) {
+    x.beginPath(); x.moveTo(X + r, Y); x.arcTo(X + w, Y, X + w, Y + h, r); x.arcTo(X + w, Y + h, X, Y + h, r);
+    x.arcTo(X, Y + h, X, Y, r); x.arcTo(X, Y, X + w, Y, r); x.closePath();
+  }
+  function clip(x, s, max) {
+    if (x.measureText(s).width <= max) return s;
+    while (s.length && x.measureText(s + '…').width > max) s = s.slice(0, -1);
+    return s + '…';
+  }
+  const stamp = () => new Date().toISOString().slice(0, 10);
+  function download(blob, name) {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  }
+
+  function render(results) {
+    state.results = results;
+    renderLeaderboard();
+    const ok = rankedRows().map((r) => r.u);
+    const bad = results.filter((u) => u.error);
 
     els.cards.innerHTML = [...ok.map(card), ...bad.map(errorCard)].join('');
     requestAnimationFrame(() => document.querySelectorAll('.bar > span[data-w]').forEach((s) => (s.style.width = s.dataset.w)));
