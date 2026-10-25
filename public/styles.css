@@ -16,6 +16,8 @@
 }
 
 * { box-sizing: border-box; }
+/* Ensure the hidden attribute always wins over display rules (fixes empty banners). */
+[hidden] { display: none !important; }
 html, body { margin: 0; }
 body {
   font-family: 'Inter', system-ui, sans-serif;
@@ -281,6 +283,39 @@ code { font-family: 'JetBrains Mono', monospace; font-size: 0.85em; background: 
 .problems .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .note { color: var(--muted); font-size: 0.78rem; margin-top: 10px; }
 @media (max-width: 560px) { .stat-grid { grid-template-columns: repeat(2, 1fr); } }
+
+/* Name + username form, chips, name cells */
+.person-form { display: grid; grid-template-columns: 1fr 1.3fr auto; gap: 10px; }
+.chip-person { padding-left: 4px; }
+.chip-edit { background: none; border: none; color: var(--text); font: inherit; font-size: 0.85rem; cursor: pointer; padding: 0 4px 0 8px; width: auto !important; height: auto !important; border-radius: 999px !important; display: inline !important; }
+.chip-edit:hover { color: var(--primary) !important; background: none !important; }
+.name-cell { display: flex; flex-direction: column; line-height: 1.25; min-width: 0; }
+.person-name { font-weight: 600; }
+.podium-1 .person-name { color: hsl(45 100% 65%); font-weight: 700; }
+.person-user { font-size: 0.76rem; color: var(--muted); }
+.person-user:hover { color: var(--primary); }
+.alert > div > div + div { margin-top: 4px; }
+
+/* Review modal */
+body.modal-open { overflow: hidden; }
+.modal-backdrop {
+  position: fixed; inset: 0; z-index: 40; display: grid; place-items: center; padding: 20px;
+  background: rgba(5, 6, 12, 0.7); backdrop-filter: blur(4px); animation: fadeUp 0.2s ease both;
+}
+.modal { width: min(720px, 100%); max-height: 88vh; display: flex; flex-direction: column; background: var(--bg-2); }
+.modal-title { margin: 0 0 4px; font-size: 1.25rem; }
+.modal-scroll { overflow-y: auto; margin: 10px 0 16px; border: 1px solid var(--border); border-radius: 12px; }
+.review-table { width: 100%; border-collapse: collapse; }
+.review-table th { text-align: left; font-size: 0.75rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; padding: 10px; position: sticky; top: 0; background: var(--bg-2); }
+.review-table td { padding: 6px 8px; border-top: 1px solid var(--border); }
+.review-table td:last-child { width: 40px; }
+.review-table input { padding: 9px 11px; font-size: 0.9rem; }
+.review-table tr.rv-invalid .rv-user { border-color: var(--hard); box-shadow: 0 0 0 3px hsla(352, 85%, 62%, 0.2); }
+.icon-btn { width: 32px; height: 32px; border-radius: 8px; border: 1px solid var(--border); background: transparent; color: var(--muted); cursor: pointer; }
+.icon-btn:hover { color: var(--hard); border-color: var(--hard); }
+.modal-actions { display: flex; gap: 10px; align-items: center; }
+.modal-actions .spacer { flex: 1; }
+@media (max-width: 560px) { .person-form { grid-template-columns: 1fr; } }
 
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes shimmer { from { transform: translateX(-100%); } to { transform: translateX(100%); } }

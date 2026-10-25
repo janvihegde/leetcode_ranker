@@ -9,15 +9,27 @@ Analyze activity for multiple users over a custom time range, in two tabs:
 - **Frontend:** Vanilla HTML/CSS/JS with no build step, served from `public/`.
 
 ## LeetCode tab
-- Add users by username or profile URL (`leetcode.com/u/name` or `leetcode.com/name`). You can paste several, separated by commas or spaces.
-- Upload a PDF. The server extracts profile links with a regex, skips reserved paths (`/problems`, `/contest`, …), and removes duplicates.
+- **Names + usernames.** Add people with the *Name* (optional) + *LeetCode username or profile link* form. Click a chip to edit it. The list is saved in your browser's `localStorage` and has a **Clear all** button.
+- **PDF import.** Upload a PDF where each line or table row has a name and a LeetCode link (e.g. `1. Janvi Hegde - leetcode.com/u/janvihegde`, or a table with Name and LeetCode columns).
+  - The server reads it line by line. The text next to each link becomes the name, with numbering (`1.`, `2)`) and separators (`-`, `|`, `:`) removed.
+  - Reserved paths like `/problems` are ignored, and duplicates are removed.
+- **CSV import.** Upload a CSV with columns `name,username`. The username column can also hold profile links.
+- **Review step.** Every import opens a review table. You can edit, add or delete rows before confirming. Rows where no name was found are left blank for you to fill in.
 - Pick a start/end date-time (default: last 7 days) or use the presets.
-- Each user gets a card with:
+- Each person gets a card titled with their name, with the username as a small link. Each card shows:
   - Unique problems solved in the range
   - Topic tags with counts
   - Problem list (title, difficulty, link, time)
   - All-time Easy/Medium/Hard totals
-- Combined leaderboard sorted by solved count.
+- **Leaderboard:**
+  - Ranked by unique problems solved in the range. Ties share a rank and are ordered by hard problems.
+  - Columns: Rank, Name, Solved in range, Easy/Medium/Hard, Top topic.
+  - The top 3 get gold, silver and bronze highlights. The heading shows the time range.
+- **Downloads (privacy).** **Download CSV** and **Download image** include **names only**, with no usernames, links or other identifiers.
+  - Columns: Rank, Name, Solved in range, Easy, Medium, Hard, Top topic.
+  - Empty names appear as "Unnamed".
+  - The date range is in the image title and the file name (e.g. `leetcode-leaderboard_2026-10-18_to_2026-10-25.csv`).
+- **Errors.** The red banner appears only when there is a message. Failed people are listed as `<name>: reason` (not found, private, blocked, or rate-limited).
 - Caching: user data is cached for 5 minutes in memory. Question metadata is cached for 24 hours and also written to `cache/questions.json`.
 - Throttling: requests to LeetCode are sent one at a time, at least 350 ms apart, with exponential-backoff retries on 429/5xx.
 - Clear errors for invalid/private users, rate limits, and **403 / Cloudflare blocks**.
@@ -63,7 +75,7 @@ Use `npm run dev` to auto-restart on file changes. Set `PORT` to change the port
 | Method | Path | Body | Description |
 |---|---|---|---|
 | GET | `/health` | n/a | Health check |
-| POST | `/api/parse-pdf` | multipart `file` | Returns `{ usernames, count }`. Add `?type=github` to extract GitHub usernames |
+| POST | `/api/parse-pdf` | multipart `file` | Returns `{ pairs: [{ name, username }], usernames, count }`. Add `?type=github` to extract GitHub usernames |
 | POST | `/api/analyze` | `{ usernames: [], start, end }` (ISO strings) | Per-user analysis plus `globalError` if LeetCode blocked or rate-limited the request |
 | GET | `/api/github/status` | n/a | `{ tokenConfigured }` |
 | POST | `/api/github/analyze` | `{ usernames: [], start, end, repo? }` | Per-user GitHub stats plus `globalError` |
@@ -73,7 +85,7 @@ Use `npm run dev` to auto-restart on file changes. Set `PORT` to change the port
 - Sometimes the range starts before the oldest of those 20 submissions. In that case the card shows a notice that the list may be incomplete. It also shows **"≈ N submissions (calendar)"**, which comes from `submissionCalendar`. Keep in mind:
   - The calendar counts accepted *submissions*, not unique problems, so solving the same problem twice counts twice.
   - The calendar uses UTC days.
-- The leaderboard ranks by the larger of the unique count and the calendar count.
+- The leaderboard ranks by the unique count. The calendar figure is shown only as extra context.
 
 ## Deploy (Render)
 1. Push this repo to GitHub (already set up as `origin` → `janvihegde/leetcode_ranker`):

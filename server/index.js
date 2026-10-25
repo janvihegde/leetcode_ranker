@@ -41,39 +41,82 @@ const RESERVED = new Set([
 
 const USERNAME_RE = /^[A-Za-z0-9_-]{1,40}$/;
 
-/** Extract usernames from arbitrary text (URLs + bare usernames on their own line). */
-function extractUsernames(text) {
-  const found = new Map();
-  const add = (n) => {
-    if (!n || RESERVED.has(n.toLowerCase()) || !USERNAME_RE.test(n)) return;
-    if (!found.has(n.toLowerCase())) found.set(n.toLowerCase(), n);
-  };
-  const re = /leetcode\.(?:com|cn)\/(?:u\/)?([A-Za-z0-9_-]+)/gi;
-  let m;
-  while ((m = re.exec(text))) add(m[1]);
-  return [...found.values()];
-}
-
 const GH_RESERVED = new Set([
   'orgs', 'topics', 'features', 'settings', 'about', 'pricing', 'marketplace', 'explore', 'login', 'logout',
   'join', 'signup', 'sponsors', 'notifications', 'issues', 'pulls', 'search', 'trending', 'collections',
   'events', 'enterprise', 'team', 'teams', 'security', 'site', 'contact', 'apps', 'organizations',
-  'new', 'codespaces', 'customer-stories', 'readme', 'blog', 'docs', 'login', 'password_reset',
-  'dashboard', 'stars', 'watching', 'gist', 'marketplace', 'resources', 'solutions', 'github',
+  'new', 'codespaces', 'customer-stories', 'readme', 'blog', 'docs', 'password_reset',
+  'dashboard', 'stars', 'watching', 'gist', 'resources', 'solutions', 'github',
 ]);
 const GH_USER_RE = /^[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38}$/;
 
-function extractGithubUsernames(text) {
+/** Turn the leftover text of a line into a person's name (or ''). */
+function cleanName(s) {
+  const out = s
+    .replace(/https?:\/\/\S+/gi, ' ')
+    .replace(/\b(?:www\.)?[\w-]+\.(?:com|cn|io|dev|org|in)\/?\S*/gi, ' ')
+    .replace(/\b(?:name|leetcode|github|profile|link|url|username|handle)\b\s*[:=\-]?/gi, ' ')
+    .replace(/[|:;,\t•●▪*"\[\](){}<>=]+/g, ' ')
+    .replace(/(^|\s)[-–—_.]+(?=\s|$)/g, ' ')
+    .replace(/^\s*(?:#?\d+|[a-z])[.)]\s+/i, '')
+    .replace(/^\s*#?\d+\s+/, '')
+    .replace(/^\s*#?\d+(?=\p{L})/u, '') // table cells glued together by pdf-parse: "3Priya Sharma"
+    .replace(/\s+\d+\s*$/, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return /\p{L}/u.test(out) ? out.slice(0, 60) : '';
+}
+
+const EXTRACTORS = {
+  leetcode: {
+    re: () => /(?:https?:\/\/)?(?:www\.)?leetcode\.(?:com|cn)\/(?:u\/)?([A-Za-z0-9_-]+)\/?/gi,
+    ok: (n) => !RESERVED.has(n.toLowerCase()) && USERNAME_RE.test(n),
+  },
+  github: {
+    re: () => /(?:https?:\/\/)?(?:www\.)?github\.com\/([A-Za-z0-9-]{1,39})(?![A-Za-z0-9-])(?:\/[^\s|,;]*)?/gi,
+    ok: (n) => !GH_RESERVED.has(n.toLowerCase()) && GH_USER_RE.test(n),
+  },
+};
+
+/**
+ * Line-based extraction: each line/table row with a profile link yields
+ * { name, username }, where name is the remaining text of that line.
+ */
+function extractPairs(text, type = 'leetcode') {
+  const ex = EXTRACTORS[type];
   const found = new Map();
-  const re = /github\.com\/([A-Za-z0-9-]{1,39})(?![A-Za-z0-9-])/gi;
-  let m;
-  while ((m = re.exec(text))) {
-    const n = m[1];
-    if (GH_RESERVED.has(n.toLowerCase()) || !GH_USER_RE.test(n)) continue;
-    if (!found.has(n.toLowerCase())) found.set(n.toLowerCase(), n);
+  for (const line of text.split(/\r?\n/)) {
+    const matches = [...line.matchAll(ex.re())].filter((m) => ex.ok(m[1]));
+    if (!matches.length) continue;
+    let cursor = 0;
+    matches.forEach((m, i) => {
+      // One link: whole line minus the link. Several: the text segment before each link.
+      const rest = matches.length === 1
+        ? line.slice(0, m.index) + ' ' + line.slice(m.index + m[0].length)
+        : line.slice(cursor, m.index);
+      cursor = m.index + m[0].length;
+      const key = m[1].toLowerCase();
+      const name = cleanName(rest);
+      if (!found.has(key)) found.set(key, { name, username: m[1] });
+      else if (!found.get(key).name && name) found.get(key).name = name;
+      void i;
+    });
+  }
+  // Fallback: URLs clearly split by the PDF layout ("...leetcode.com/u/" + newline + "name").
+  const lines = text.split(/\r?\n/);
+  const splitEnd = type === 'github' ? /github\.com\/\s*$/i : /leetcode\.(?:com|cn)\/(?:u\/)?\s*$/i;
+  const head = type === 'github' ? /^([A-Za-z0-9-]{1,39})/ : /^([A-Za-z0-9_-]+)/;
+  for (let i = 0; i < lines.length - 1; i++) {
+    if (!splitEnd.test(lines[i])) continue;
+    const m = lines[i + 1].trim().match(head);
+    if (m && ex.ok(m[1]) && !found.has(m[1].toLowerCase())) {
+      found.set(m[1].toLowerCase(), { name: cleanName(lines[i].replace(/\S*(?:leetcode\.(?:com|cn)|github\.com)\S*/gi, ' ')), username: m[1] });
+    }
   }
   return [...found.values()];
 }
+
+const extractUsernames = (text) => extractPairs(text, 'leetcode').map((p) => p.username);
 
 app.get('/health', (req, res) => res.json({ status: 'ok', uptime: process.uptime() }));
 
@@ -84,10 +127,8 @@ app.post('/api/parse-pdf', upload.single('file'), async (req, res) => {
   }
   try {
     const data = await pdfParse(req.file.buffer);
-    // PDF text may break URLs across lines; also join hyphen/linebreak splits.
-    const text = data.text + '\n' + data.text.replace(/\s*\n\s*/g, '');
-    const usernames = req.query.type === 'github' ? extractGithubUsernames(text) : extractUsernames(text);
-    res.json({ usernames, count: usernames.length });
+    const pairs = extractPairs(data.text, req.query.type === 'github' ? 'github' : 'leetcode');
+    res.json({ pairs, usernames: pairs.map((p) => p.username), count: pairs.length });
   } catch (e) {
     res.status(422).json({ error: 'Could not read PDF: ' + e.message });
   }
@@ -242,9 +283,11 @@ app.post('/api/github/analyze', async (req, res) => {
   });
 });
 
-const PORT = Number(process.env.PORT) || 3000;
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`LeetCode Activity Analyzer running on http://0.0.0.0:${PORT}`);
-});
+if (require.main === module) {
+  const PORT = Number(process.env.PORT) || 3000;
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`LeetCode Activity Analyzer running on http://0.0.0.0:${PORT}`);
+  });
+}
 
-module.exports = { extractUsernames };
+module.exports = { extractUsernames, extractPairs, cleanName };

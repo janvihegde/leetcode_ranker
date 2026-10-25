@@ -36,14 +36,15 @@
         <div class="panel-grid">
           <div>
             <h2 id="users-heading" class="panel-title"><span class="step">1</span> Users</h2>
-            <form id="add-form" class="input-row" autocomplete="off">
-              <input id="user-input" type="text" placeholder="username or https://leetcode.com/u/username" aria-label="LeetCode username or profile URL" />
+            <form id="add-form" class="person-form" autocomplete="off">
+              <input id="name-input" type="text" placeholder="Name (optional)" aria-label="Name" />
+              <input id="user-input" type="text" placeholder="LeetCode username or profile link" aria-label="LeetCode username or profile link" required />
               <button id="add-btn" class="btn btn-secondary" type="submit">Add</button>
             </form>
             <label id="dropzone" class="dropzone" for="pdf-input">
-              <input id="pdf-input" type="file" accept="application/pdf,.pdf" hidden />
+              <input id="pdf-input" type="file" accept="application/pdf,.pdf,text/csv,.csv" hidden />
               <span class="dz-icon">📄</span>
-              <span class="dz-text"><strong>Upload a PDF</strong> with profile links, or drag it here</span>
+              <span class="dz-text"><strong>Upload a PDF or CSV</strong> with names + LeetCode profiles, or drag it here</span>
             </label>
             <div class="chips-header">
               <span id="user-count" class="muted">No users added</span>
@@ -87,14 +88,14 @@
                 <button type="button" class="seg" data-sort="hard" id="sort-hard">Hard</button>
                 <button type="button" class="seg" data-sort="topics" id="sort-topics">Topics</button>
               </div>
-              <button id="csv-btn" type="button" class="btn btn-secondary btn-sm">⬇ CSV</button>
-              <button id="img-btn" type="button" class="btn btn-secondary btn-sm">🖼 Image</button>
+              <button id="csv-btn" type="button" class="btn btn-secondary btn-sm" title="Names only, no usernames">⬇ Download CSV</button>
+              <button id="img-btn" type="button" class="btn btn-secondary btn-sm" title="Names only, no usernames">🖼 Download image</button>
             </div>
           </div>
           <div class="table-wrap">
             <table id="leaderboard" class="table lb-table">
               <thead>
-                <tr><th>Rank</th><th>Username</th><th>Solved in range</th><th>Easy / Med / Hard</th><th class="hide-sm">Top topic</th></tr>
+                <tr><th>Rank</th><th>Name</th><th>Solved in range</th><th>Easy / Med / Hard</th><th class="hide-sm">Top topic</th></tr>
               </thead>
               <tbody></tbody>
             </table>
@@ -201,6 +202,25 @@
   <footer class="site-footer container">
     <span>Data from LeetCode's public GraphQL API and the GitHub GraphQL API. Not affiliated with either.</span>
   </footer>
+
+  <div id="review-modal" class="modal-backdrop" hidden>
+    <div class="modal panel" role="dialog" aria-modal="true" aria-labelledby="review-title">
+      <h2 id="review-title" class="modal-title">Review</h2>
+      <p id="review-hint" class="muted"></p>
+      <div class="modal-scroll">
+        <table class="review-table">
+          <thead><tr><th>Name</th><th>LeetCode username / link</th><th></th></tr></thead>
+          <tbody id="review-rows"></tbody>
+        </table>
+      </div>
+      <div class="modal-actions">
+        <button id="review-add" type="button" class="btn btn-secondary btn-sm">+ Add row</button>
+        <span class="spacer"></span>
+        <button id="review-cancel" type="button" class="btn btn-secondary">Cancel</button>
+        <button id="review-confirm" type="button" class="btn btn-primary">Confirm</button>
+      </div>
+    </div>
+  </div>
 
   <div id="toast" class="toast" role="status" hidden></div>
   <script src="app.js"></script>
