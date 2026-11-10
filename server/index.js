@@ -207,7 +207,8 @@ app.post('/api/analyze', async (req, res) => {
   const { usernames, start, end } = req.body || {};
   if (!Array.isArray(usernames) || usernames.length === 0)
     return res.status(400).json({ error: 'Provide a non-empty "usernames" array.' });
-  if (usernames.length > 50) return res.status(400).json({ error: 'Max 50 users per request.' });
+  // Safety cap per request. The frontend sends batches of 8, so large lists (up to 500) are fine.
+  if (usernames.length > 50) return res.status(400).json({ error: 'Too many users in one request (limit 50). The app sends users in batches of 8, so please reload the page and try again.' });
   const startSec = Math.floor(new Date(start).getTime() / 1000);
   const endSec = Math.floor(new Date(end).getTime() / 1000);
   if (!Number.isFinite(startSec) || !Number.isFinite(endSec) || startSec >= endSec)

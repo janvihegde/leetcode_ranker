@@ -16,6 +16,14 @@ Analyze activity for multiple users over a custom time range, in two tabs:
 - **CSV import.** Upload a CSV with columns `name,username`. The username column can also hold profile links.
 - **Review step.** Every import opens a review table. You can edit, add or delete rows before confirming. Rows where no name was found are left blank for you to fill in.
 - Pick a start/end date-time (default: last 7 days) or use the presets.
+- **Large lists (up to 500 people).** The page accepts up to 500 people. Analysis runs in batches:
+  - The browser sends **8 people per request**, one batch after another, using the same start/end range for every batch.
+  - A progress bar shows "Analyzed 24 of 210". The leaderboard and cards update after each batch.
+  - **Cancel** stops sending further batches. Results already received stay on screen.
+  - If a batch fails (timeout, 429, blocked), it is retried once after 3 seconds. Users who still fail are marked `failed: <reason>`, and the run continues.
+  - When the run ends, **Retry failed users** re-analyzes only those people, with the same date range.
+  - The server accepts at most **50 users per single request** as a safety limit. The browser never sends more than 8.
+  - The server waits about 300 ms between users and caches results (user data for 5 minutes, question data for 24 hours), so repeating an analysis is fast.
 - Each person gets a card titled with their name, with the username as a small link. Each card shows:
   - Unique problems solved in the range
   - Topic tags with counts
@@ -29,6 +37,8 @@ Analyze activity for multiple users over a custom time range, in two tabs:
   - Columns: Rank, Name, Solved in range, Easy, Medium, Hard, Top topic.
   - Empty names appear as "Unnamed".
   - The date range is in the image title and the file name (e.g. `leetcode-leaderboard_2026-10-18_to_2026-10-25.csv`).
+  - Downloads include everyone who was analyzed successfully, ranked together. People who failed have no data and are left out.
+  - The image is split into pages of 50 rows (`..._page-1-of-5.png`, and so on) so it stays readable with 200+ people. Your browser may ask to allow multiple downloads.
 - **Errors.** The red banner appears only when there is a message. Failed people are listed as `<name>: reason` (not found, private, blocked, or rate-limited).
 - Caching: user data is cached for 5 minutes in memory. Question metadata is cached for 24 hours and also written to `cache/questions.json`.
 - Throttling: requests to LeetCode are sent one at a time, at least 350 ms apart, with exponential-backoff retries on 429/5xx.
@@ -76,7 +86,7 @@ Use `npm run dev` to auto-restart on file changes. Set `PORT` to change the port
 |---|---|---|---|
 | GET | `/health` | n/a | Health check |
 | POST | `/api/parse-pdf` | multipart `file` | Returns `{ pairs: [{ name, username }], usernames, count }`. Add `?type=github` to extract GitHub usernames |
-| POST | `/api/analyze` | `{ usernames: [], start, end }` (ISO strings) | Per-user analysis plus `globalError` if LeetCode blocked or rate-limited the request |
+| POST | `/api/analyze` | `{ usernames: [], start, end }` (ISO strings, up to 50 usernames per request; the app sends 8) | Per-user analysis plus `globalError` if LeetCode blocked or rate-limited the request |
 | GET | `/api/github/status` | n/a | `{ tokenConfigured }` |
 | POST | `/api/github/analyze` | `{ usernames: [], start, end, repo? }` | Per-user GitHub stats plus `globalError` |
 

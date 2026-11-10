@@ -73,6 +73,16 @@
         </div>
       </section>
 
+      <div id="progress" class="panel progress-panel" hidden>
+        <div class="progress-head">
+          <span id="progress-text" class="progress-text" aria-live="polite"></span>
+          <span class="spacer"></span>
+          <button id="retry-failed-btn" type="button" class="btn btn-secondary btn-sm" hidden>↻ Retry failed users</button>
+          <button id="cancel-btn" type="button" class="btn btn-secondary btn-sm" hidden>Cancel</button>
+        </div>
+        <div class="progress-track"><span id="progress-bar"></span></div>
+      </div>
+
       <div id="global-alert" class="alert alert-error" role="alert" hidden></div>
 
       <section id="results" hidden>

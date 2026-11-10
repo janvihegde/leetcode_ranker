@@ -317,6 +317,14 @@ body.modal-open { overflow: hidden; }
 .modal-actions .spacer { flex: 1; }
 @media (max-width: 560px) { .person-form { grid-template-columns: 1fr; } }
 
+/* Batch progress */
+.progress-panel { margin-top: 20px; padding: 16px 20px; }
+.progress-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
+.progress-head .spacer { flex: 1; }
+.progress-text { font-weight: 600; font-variant-numeric: tabular-nums; }
+.progress-track { height: 8px; border-radius: 999px; background: hsla(230, 30%, 60%, 0.15); overflow: hidden; }
+.progress-track > span { display: block; height: 100%; width: 0; border-radius: 999px; background: linear-gradient(90deg, var(--primary), var(--primary-2)); transition: width 0.4s ease; }
+
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes shimmer { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
 @keyframes fadeUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }

@@ -11,7 +11,10 @@
     cards: $('#cards'), rangeLabel: $('#range-label'), toast: $('#toast'),
     modal: $('#review-modal'), modalTitle: $('#review-title'), modalHint: $('#review-hint'),
     modalBody: $('#review-rows'), modalAdd: $('#review-add'), modalOk: $('#review-confirm'), modalCancel: $('#review-cancel'),
+    progress: $('#progress'), progressBar: $('#progress-bar'), progressText: $('#progress-text'),
+    cancel: $('#cancel-btn'), retryFailed: $('#retry-failed-btn'),
   };
+  const MAX_PEOPLE = 500;
 
   const RESERVED = new Set(['problems', 'problemset', 'contest', 'discuss', 'explore', 'u', 'accounts', 'study-plan', 'tag', 'company', 'submissions', 'profile']);
 
@@ -50,12 +53,16 @@
 
   /** Merge pairs into the list. Existing usernames get their name updated if a new one is given. */
   function upsert(pairs) {
-    let added = 0, updated = 0;
+    let added = 0, updated = 0, skipped = 0;
     for (const { name, username } of pairs) {
       const i = findIdx(username);
-      if (i === -1) { state.people.push({ name: name.trim(), username }); added++; }
+      if (i === -1) {
+        if (state.people.length >= MAX_PEOPLE) { skipped++; continue; }
+        state.people.push({ name: name.trim(), username }); added++;
+      }
       else if (name.trim() && state.people[i].name !== name.trim()) { state.people[i].name = name.trim(); updated++; }
     }
+    if (skipped) setTimeout(() => toast(`List is limited to ${MAX_PEOPLE} people; ${skipped} not added.`, 5000), 50);
     save();
     renderChips();
     return { added, updated };
@@ -68,7 +75,7 @@
           <button type="button" data-i="${i}" aria-label="Remove ${esc(p.name || p.username)}">✕</button></li>`)
       .join('');
     const n = state.people.length;
-    els.count.textContent = n ? `${n} ${n > 1 ? 'people' : 'person'}` : 'No users added';
+    els.count.textContent = n ? `${n} ${n > 1 ? 'people' : 'person'}${n >= MAX_PEOPLE ? ` (max ${MAX_PEOPLE})` : ''}` : 'No users added';
     els.clear.hidden = !n;
     els.analyze.disabled = !n;
   }
@@ -273,18 +280,32 @@
   const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   const rangeSlug = () => (state.range ? `${ymd(state.range.start)}_to_${ymd(state.range.end)}` : ymd(new Date()));
 
-  function setLoading(on) {
+  // ---------- Batched analysis ----------
+  const BATCH_SIZE = 8;              // never send more than 8 users per request
+  const BATCH_TIMEOUT_MS = 180000;   // per request
+  const RETRY_DELAY_MS = 3000;
+  const RETRYABLE = new Set(['BLOCKED', 'RATE_LIMITED', 'UPSTREAM', 'TIMEOUT', 'NETWORK']);
+  const run = { active: false, cancelled: false, controller: null };
+  const keyOf = (u) => String(u).toLowerCase();
+
+  function setLoading(on, label) {
     els.analyze.disabled = on || !state.people.length;
     els.analyze.querySelector('.spinner').hidden = !on;
-    els.analyze.querySelector('.btn-label').textContent = on ? `Analyzing ${state.people.length} ${state.people.length === 1 ? 'person' : 'people'}…` : 'Analyze';
+    els.analyze.querySelector('.btn-label').textContent = on ? (label || 'Analyzing…') : 'Analyze';
+    els.retryFailed.disabled = on;
   }
 
-  function showSkeleton() {
+  function setProgress(done, total, note = '') {
+    els.progress.hidden = false;
+    const pct = total ? Math.round((done / total) * 100) : 0;
+    els.progressBar.style.width = pct + '%';
+    els.progressText.textContent = `Analyzed ${done} of ${total}${note ? ' · ' + note : ''}`;
+  }
+
+  function showSkeleton(n) {
     els.results.hidden = false;
-    els.board.innerHTML = state.people.map(() => `<tr><td colspan="5"><div class="skeleton" style="height:22px"></div></td></tr>`).join('');
-    els.cards.innerHTML = state.people
-      .map(() => `<div class="panel card"><div class="skeleton" style="height:48px;margin-bottom:16px"></div><div class="skeleton" style="height:60px;margin-bottom:12px"></div><div class="skeleton" style="height:120px"></div></div>`)
-      .join('');
+    els.board.innerHTML = Array.from({ length: Math.min(n, 8) }, () => `<tr><td colspan="5"><div class="skeleton" style="height:22px"></div></td></tr>`).join('');
+    els.cards.innerHTML = '';
   }
 
   /** Error banner: only visible when there is at least one real message. */
@@ -299,44 +320,140 @@
     els.alert.hidden = false;
   }
 
-  els.analyze.addEventListener('click', async () => {
+  /** One request for ≤8 users. Throws on HTTP/network/timeout errors. */
+  async function postBatch(usernames) {
+    run.controller = new AbortController();
+    const timer = setTimeout(() => run.controller.abort('timeout'), BATCH_TIMEOUT_MS);
+    try {
+      const r = await fetch('/api/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ usernames, start: state.range.start.toISOString(), end: state.range.end.toISOString() }),
+        signal: run.controller.signal,
+      });
+      let data;
+      try { data = await r.json(); } catch { throw Object.assign(new Error(`invalid server response (HTTP ${r.status})`), { code: 'UPSTREAM' }); }
+      if (!r.ok) throw Object.assign(new Error(data.error || `HTTP ${r.status}`), { code: r.status === 429 ? 'RATE_LIMITED' : 'UPSTREAM' });
+      return data.results;
+    } catch (e) {
+      if (run.cancelled) throw Object.assign(new Error('cancelled'), { code: 'CANCELLED' });
+      if (e.name === 'AbortError' || e === 'timeout') throw Object.assign(new Error('request timed out'), { code: 'TIMEOUT' });
+      if (!e.code) e.code = 'NETWORK';
+      throw e;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  /** Runs a batch; retries retryable failures once after 3 s. Returns per-user results. */
+  async function runBatch(usernames, onRetry) {
+    let results;
+    try {
+      results = await postBatch(usernames);
+    } catch (e) {
+      if (e.code === 'CANCELLED') throw e;
+      results = usernames.map((u) => ({ username: u, error: e.message, errorCode: e.code }));
+    }
+    const retry = results.filter((r) => r.error && RETRYABLE.has(r.errorCode)).map((r) => r.username);
+    if (!retry.length || run.cancelled) return results;
+    onRetry?.(retry.length);
+    await new Promise((res) => setTimeout(res, RETRY_DELAY_MS));
+    if (run.cancelled) return results;
+    let second;
+    try {
+      second = await postBatch(retry);
+    } catch (e) {
+      if (e.code === 'CANCELLED') throw e;
+      second = retry.map((u) => ({ username: u, error: e.message, errorCode: e.code }));
+    }
+    const byKey = new Map(second.map((r) => [keyOf(r.username), r]));
+    return results.map((r) => byKey.get(keyOf(r.username)) || r);
+  }
+
+  /** Analyze a list of usernames in batches, merging into state.resultsMap. */
+  async function analyzeAll(usernames, { fresh }) {
+    if (run.active) return;
+    run.active = true;
+    run.cancelled = false;
+    if (fresh) state.resultsMap = new Map();
+    const total = usernames.length;
+    let done = 0;
+    showAlert(null);
+    els.retryFailed.hidden = true;
+    els.cancel.hidden = false;
+    setLoading(true, `Analyzing ${total} ${total === 1 ? 'person' : 'people'}…`);
+    setProgress(0, total);
+    if (fresh) showSkeleton(total);
+
+    try {
+      for (let i = 0; i < usernames.length && !run.cancelled; i += BATCH_SIZE) {
+        const batch = usernames.slice(i, i + BATCH_SIZE);
+        let results;
+        try {
+          results = await runBatch(batch, (n) => setProgress(done, total, `retrying ${n} in 3s…`));
+        } catch (e) {
+          if (e.code === 'CANCELLED') break;
+          throw e;
+        }
+        for (const r of results) {
+          // Keep the requested username as key so names map correctly.
+          const req = batch.find((u) => keyOf(u) === keyOf(r.username)) || r.username;
+          state.resultsMap.set(keyOf(req), r.error ? { ...r, username: req, error: `failed: ${r.error}` } : r);
+        }
+        done += batch.length;
+        setProgress(done, total);
+        render([...state.resultsMap.values()]);
+      }
+    } catch (e) {
+      showAlert(e.message || 'Something went wrong');
+    } finally {
+      run.active = false;
+      run.controller = null;
+      els.cancel.hidden = true;
+      setLoading(false);
+      if (run.cancelled) setProgress(done, total, 'cancelled');
+      finishSummary();
+    }
+  }
+
+  function failedUsers() {
+    return [...(state.resultsMap?.values() || [])].filter((r) => r.error);
+  }
+
+  function finishSummary() {
+    const failed = failedUsers();
+    els.retryFailed.hidden = !failed.length;
+    els.retryFailed.textContent = `↻ Retry failed users (${failed.length})`;
+    if (!state.resultsMap?.size) els.results.hidden = true;
+    if (!failed.length) return showAlert(null);
+    const MAX = 8;
+    const msgs = failed.slice(0, MAX).map((u) => `${labelFor(u.username)}: ${u.error.replace(/^failed: /, '')}`);
+    if (failed.length > MAX) msgs.push(`…and ${failed.length - MAX} more (marked "failed" in the leaderboard).`);
+    showAlert(msgs);
+  }
+
+  els.analyze.addEventListener('click', () => {
     const start = new Date(els.start.value);
     const end = new Date(els.end.value);
     if (isNaN(start) || isNaN(end)) return toast('Please choose a valid start and end');
     if (start >= end) return toast('Start must be before end');
     if (!state.people.length) return toast('Add at least one person');
-
-    showAlert(null);
-    setLoading(true);
-    showSkeleton();
     state.range = { start, end };
     state.rangeText = fmtRange(start, end);
     els.rangeLabel.textContent = state.rangeText;
-    try {
-      const r = await fetch('/api/analyze', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ usernames: state.people.map((p) => p.username), start: start.toISOString(), end: end.toISOString() }),
-      });
-      let data;
-      try { data = await r.json(); } catch { throw new Error(`Server returned an invalid response (HTTP ${r.status}).`); }
-      if (!r.ok) throw new Error(data.error || `Request failed (HTTP ${r.status})`);
-      render(data.results);
-      const failed = data.results.filter((u) => u.error);
-      const msgs = [];
-      if (data.globalError) msgs.push(data.globalError.message);
-      for (const u of failed) {
-        if (data.globalError && u.error === data.globalError.message) continue; // already summarised
-        msgs.push(`${labelFor(u.username)}: ${u.error}`);
-      }
-      if (data.globalError && failed.length) msgs.push(`Affected: ${failed.filter((u) => u.error === data.globalError.message).map((u) => labelFor(u.username)).join(', ')}`);
-      showAlert(msgs);
-    } catch (e) {
-      showAlert(e.message || 'Something went wrong');
-      els.results.hidden = true;
-    } finally {
-      setLoading(false);
-    }
+    analyzeAll(state.people.map((p) => p.username), { fresh: true });
+  });
+
+  els.cancel.addEventListener('click', () => {
+    run.cancelled = true;
+    run.controller?.abort();
+    els.cancel.hidden = true;
+  });
+
+  els.retryFailed.addEventListener('click', () => {
+    const failed = failedUsers().map((u) => u.username);
+    if (!failed.length || !state.range) return;
+    analyzeAll(failed, { fresh: false });
   });
 
 
@@ -411,11 +528,24 @@
     download(new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' }), `leetcode-leaderboard_${rangeSlug()}.csv`);
   });
 
-  // Image export (drawn on canvas: no external deps, no avatars or usernames)
+  // Image export (drawn on canvas: no external deps, no avatars or usernames).
+  // Large leaderboards are split into pages of IMG_ROWS_PER_PAGE rows, one PNG per page.
+  const IMG_ROWS_PER_PAGE = 50;
   $('#img-btn').addEventListener('click', async () => {
-    const rows = rankedRows();
-    if (!rows.length) return toast('Nothing to export yet');
+    const all = rankedRows();
+    if (!all.length) return toast('Nothing to export yet');
+    if (run.active) toast('Exporting results so far (analysis still running)');
     await document.fonts?.ready;
+    const pages = Math.ceil(all.length / IMG_ROWS_PER_PAGE);
+    if (pages > 1) toast(`Saving ${pages} images (${IMG_ROWS_PER_PAGE} rows each). Allow multiple downloads if your browser asks.`, 5000);
+    for (let p = 0; p < pages; p++) {
+      const blob = await drawLeaderboardPage(all.slice(p * IMG_ROWS_PER_PAGE, (p + 1) * IMG_ROWS_PER_PAGE), p, pages, all);
+      download(blob, `leetcode-leaderboard_${rangeSlug()}${pages > 1 ? `_page-${p + 1}-of-${pages}` : ''}.png`);
+      if (p < pages - 1) await new Promise((r) => setTimeout(r, 400));
+    }
+  });
+
+  function drawLeaderboardPage(rows, page, pages, all) {
     const W = 960, rowH = 56, headH = 150, pad = 36;
     const H = headH + 44 + rows.length * rowH + 60;
     const dpr = 2;
@@ -437,7 +567,8 @@
     x.fillStyle = '#ffb547'; x.font = F(700, 17);
     x.fillText(clip(x, state.rangeText, W - 2 * pad), pad, 94);
     x.fillStyle = '#9aa0b4'; x.font = F(500, 14);
-    x.fillText(`Ranked by ${METRICS[state.sort].label.toLowerCase()}`, pad, 120);
+    const pageNote = pages > 1 ? `  ·  page ${page + 1} of ${pages}  ·  ${all.length} people` : `  ·  ${all.length} ${all.length === 1 ? 'person' : 'people'}`;
+    x.fillText(`Ranked by ${METRICS[state.sort].label.toLowerCase()}${pageNote}`, pad, 120);
 
     const cols = [pad, pad + 80, pad + 400, pad + 540, pad + 710];
     x.fillStyle = '#7d8399'; x.font = F(600, 12);
@@ -481,8 +612,8 @@
       x.fillText('* list may be incomplete (range goes beyond the 20 most recent accepted submissions)', pad, H - 24);
     }
 
-    c.toBlob((b) => download(b, `leetcode-leaderboard_${rangeSlug()}.png`), 'image/png');
-  });
+    return new Promise((res) => c.toBlob(res, 'image/png'));
+  }
 
   function roundRect(x, X, Y, w, h, r) {
     x.beginPath(); x.moveTo(X + r, Y); x.arcTo(X + w, Y, X + w, Y + h, r); x.arcTo(X + w, Y + h, X, Y + h, r);
